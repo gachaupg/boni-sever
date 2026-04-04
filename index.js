@@ -46,6 +46,7 @@ function toProductJSON(doc) {
     price: o.price,
     tag: o.tag || null,
     image: o.image || null,
+    in_stock: o.in_stock !== false,
     created_at: o.createdAt,
   };
 }
@@ -76,6 +77,54 @@ app.get("/api/auth/me", authMiddleware, (req, res) => {
   res.json({ user: req.user });
 });
 
+app.patch("/api/auth/password", authMiddleware, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword || String(newPassword).length < 8) {
+      return res.status(400).json({ error: "New password must be at least 8 characters" });
+    }
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!bcrypt.compareSync(currentPassword, user.password_hash)) {
+      return res.status(401).json({ error: "Current password incorrect" });
+    }
+    user.password_hash = bcrypt.hashSync(newPassword, 10);
+    await user.save();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.patch("/api/auth/email", authMiddleware, async (req, res) => {
+  try {
+    const { newEmail, currentPassword } = req.body || {};
+    if (!newEmail || !currentPassword) {
+      return res.status(400).json({ error: "New email and current password required" });
+    }
+    const normalized = String(newEmail).trim().toLowerCase();
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!bcrypt.compareSync(currentPassword, user.password_hash)) {
+      return res.status(401).json({ error: "Current password incorrect" });
+    }
+    const exists = await User.findOne({ email: normalized });
+    if (exists && exists._id.toString() !== user._id.toString()) {
+      return res.status(409).json({ error: "Email already in use" });
+    }
+    user.email = normalized;
+    await user.save();
+    const token = jwt.sign(
+      { id: user._id.toString(), email: user.email },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    res.json({ token, user: { id: user._id.toString(), email: user.email } });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // Products (public GET, protected POST with image upload)
 app.get("/api/products", async (req, res) => {
   try {
@@ -88,6 +137,7 @@ app.get("/api/products", async (req, res) => {
         price: p.price,
         tag: p.tag || null,
         image: p.image || null,
+        in_stock: p.in_stock !== false,
         created_at: p.createdAt,
       }))
     );
@@ -98,7 +148,7 @@ app.get("/api/products", async (req, res) => {
 
 app.post("/api/products", authMiddleware, upload.single("image"), async (req, res) => {
   try {
-    const { name, price, tag } = req.body || {};
+    const { name, price, tag, in_stock } = req.body || {};
     if (!name || !price) {
       return res.status(400).json({ error: "Name and price required" });
     }
@@ -106,11 +156,14 @@ app.post("/api/products", authMiddleware, upload.single("image"), async (req, re
     if (req.file) {
       imagePath = "/uploads/" + req.file.filename;
     }
+    const stocked =
+      in_stock === "false" || in_stock === false || in_stock === "0" ? false : true;
     const product = await Product.create({
       name,
       price: price || "",
       tag: tag || null,
       image: imagePath,
+      in_stock: stocked,
     });
     res.status(201).json(toProductJSON(product));
   } catch (err) {
@@ -120,14 +173,27 @@ app.post("/api/products", authMiddleware, upload.single("image"), async (req, re
 
 app.put("/api/products/:id", authMiddleware, upload.single("image"), async (req, res) => {
   try {
-    const { name, price, tag } = req.body || {};
+    const { name, price, tag, in_stock } = req.body || {};
     const id = req.params.id;
-    const update = { name: name ?? "", price: price ?? "", tag: tag || null };
+    const existing = await Product.findById(id);
+    if (!existing) return res.status(404).json({ error: "Product not found" });
+
+    const update = {
+      name: name !== undefined && String(name).trim() !== "" ? name : existing.name,
+      price: price !== undefined && String(price).trim() !== "" ? price : existing.price,
+      tag: tag !== undefined ? (tag || null) : existing.tag,
+      image: existing.image,
+    };
+    if (in_stock !== undefined && in_stock !== "") {
+      update.in_stock =
+        in_stock === "true" || in_stock === true || in_stock === "1";
+    } else {
+      update.in_stock = existing.in_stock !== false;
+    }
     if (req.file) {
       update.image = "/uploads/" + req.file.filename;
     }
     const product = await Product.findByIdAndUpdate(id, update, { new: true });
-    if (!product) return res.status(404).json({ error: "Product not found" });
     res.json(toProductJSON(product));
   } catch (err) {
     res.status(500).json({ error: "Server error" });
