@@ -26,6 +26,10 @@ MONGODB_URL=mongodb+srv://...
 
 Product images are stored in the `uploads/` folder using Multer. Max file size: 5MB. Accepted formats: jpeg, jpg, png, gif, webp.
 
+### Production (Render, Railway, Fly, etc.)
+
+The `uploads/` directory is usually **ephemeral**: after a **new deploy** or sometimes a **restart**, files are **deleted** but MongoDB still references `/uploads/your-file.png`, so the browser gets **404** for that URL. Re-upload images after each deploy, or use **persistent storage** (e.g. Render Disk, AWS S3, Cloudflare R2, Cloudinary) and store full URLs in the `image` field instead of `/uploads/...`.
+
 ## Admin Login
 
 - **Email:** admin@gmail.com

@@ -22,6 +22,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Local folder for Multer. On Render (and many PaaS) this disk is EPHEMERAL: files disappear on
+// redeploy/restart while MongoDB still holds /uploads/... paths → 404. Use Render Disk, S3, R2, or Cloudinary for persistence.
 const uploadsDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -200,6 +202,10 @@ app.put("/api/products/:id", authMiddleware, upload.single("image"), async (req,
       update.in_stock = existing.in_stock !== false;
     }
     if (req.file) {
+      if (existing.image && String(existing.image).startsWith("/uploads/")) {
+        const oldFile = path.join(uploadsDir, path.basename(existing.image));
+        if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+      }
       update.image = "/uploads/" + req.file.filename;
     }
     const product = await Product.findByIdAndUpdate(id, update, { new: true });
