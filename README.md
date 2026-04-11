@@ -24,11 +24,17 @@ MONGODB_URL=mongodb+srv://...
 
 ## Image Uploads
 
-Product images are stored in the `uploads/` folder using Multer. Max file size: 5MB. Accepted formats: jpeg, jpg, png, gif, webp.
+Product images are stored on disk with **Multer** (same folder Express serves at `/uploads/...`). Max file size: 5MB. Accepted formats: jpeg, jpg, png, gif, webp.
 
-### Production (Render, Railway, Fly, etc.)
+### Persistent folder (`UPLOADS_DIR`)
 
-The `uploads/` directory is usually **ephemeral**: after a **new deploy** or sometimes a **restart**, files are **deleted** but MongoDB still references `/uploads/your-file.png`, so the browser gets **404** for that URL. Re-upload images after each deploy, or use **persistent storage** (e.g. Render Disk, AWS S3, Cloudflare R2, Cloudinary) and store full URLs in the `image` field instead of `/uploads/...`.
+By default files go under `server/server/uploads/`. On many hosts that folder is **wiped on deploy/restart**, which causes **404** for old image URLs.
+
+Set **`UPLOADS_DIR`** in `.env` to an **absolute path** on a **persistent volume** so Multer keeps writing to the same files across deploys:
+
+- **Render:** add a **Disk**, mount it (e.g. `/var/render/data`), then set `UPLOADS_DIR=/var/render/data/uploads` and redeploy. Create the directory once if needed.
+
+Multer and `express.static` both use this path.
 
 ## Admin Login
 

@@ -8,6 +8,7 @@ import fs from "fs";
 import { connectDB } from "./db.js";
 import { authMiddleware, JWT_SECRET } from "./middleware/auth.js";
 import { upload } from "./config/multer.js";
+import { ensureUploadsDir } from "./config/uploadsDir.js";
 import User from "./models/User.js";
 import Product from "./models/Product.js";
 import Service from "./models/Service.js";
@@ -22,12 +23,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Local folder for Multer. On Render (and many PaaS) this disk is EPHEMERAL: files disappear on
-// redeploy/restart while MongoDB still holds /uploads/... paths → 404. Use Render Disk, S3, R2, or Cloudinary for persistence.
-const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+const uploadsDir = ensureUploadsDir();
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
