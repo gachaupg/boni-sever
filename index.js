@@ -9,6 +9,11 @@ import { connectDB } from "./db.js";
 import { authMiddleware, JWT_SECRET } from "./middleware/auth.js";
 import { upload } from "./config/multer.js";
 import { ensureUploadsDir } from "./config/uploadsDir.js";
+import {
+  isCloudinaryEnabled,
+  uploadProductImageToCloudinary,
+  deleteProductImageFromCloudinary,
+} from "./config/cloudinaryUpload.js";
 import User from "./models/User.js";
 import Product from "./models/Product.js";
 import Service from "./models/Service.js";
@@ -24,6 +29,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 const uploadsDir = ensureUploadsDir();
+
+if (isCloudinaryEnabled()) {
+  console.log("[uploads] Cloudinary enabled — new product images go to the cloud.");
+}
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
@@ -156,7 +165,11 @@ app.post("/api/products", authMiddleware, upload.single("image"), async (req, re
     }
     let imagePath = null;
     if (req.file) {
-      imagePath = "/uploads/" + req.file.filename;
+      if (isCloudinaryEnabled()) {
+        imagePath = await uploadProductImageToCloudinary(req.file.buffer, req.file.mimetype);
+      } else {
+        imagePath = "/uploads/" + req.file.filename;
+      }
     }
     const stocked =
       in_stock === "false" || in_stock === false || in_stock === "0" ? false : true;
@@ -198,11 +211,20 @@ app.put("/api/products/:id", authMiddleware, upload.single("image"), async (req,
       update.in_stock = existing.in_stock !== false;
     }
     if (req.file) {
-      if (existing.image && String(existing.image).startsWith("/uploads/")) {
-        const oldFile = path.join(uploadsDir, path.basename(existing.image));
-        if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+      if (existing.image) {
+        const prev = String(existing.image);
+        if (prev.startsWith("/uploads/")) {
+          const oldFile = path.join(uploadsDir, path.basename(prev));
+          if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+        } else if (prev.includes("res.cloudinary.com")) {
+          await deleteProductImageFromCloudinary(prev);
+        }
       }
-      update.image = "/uploads/" + req.file.filename;
+      if (isCloudinaryEnabled()) {
+        update.image = await uploadProductImageToCloudinary(req.file.buffer, req.file.mimetype);
+      } else {
+        update.image = "/uploads/" + req.file.filename;
+      }
     }
     const product = await Product.findByIdAndUpdate(id, update, { new: true });
     res.json(toProductJSON(product));
@@ -215,9 +237,13 @@ app.delete("/api/products/:id", authMiddleware, async (req, res) => {
   try {
     const product = await Product.findByIdAndDelete(req.params.id);
     if (product?.image) {
-      const filename = path.basename(product.image);
-      const filePath = path.join(uploadsDir, filename);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      const img = String(product.image);
+      if (img.startsWith("/uploads/")) {
+        const filePath = path.join(uploadsDir, path.basename(img));
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      } else if (img.includes("res.cloudinary.com")) {
+        await deleteProductImageFromCloudinary(img);
+      }
     }
     res.json({ success: true });
   } catch (err) {

@@ -24,17 +24,17 @@ MONGODB_URL=mongodb+srv://...
 
 ## Image Uploads
 
-Product images are stored on disk with **Multer** (same folder Express serves at `/uploads/...`). Max file size: 5MB. Accepted formats: jpeg, jpg, png, gif, webp.
+Max file size: 5MB. Accepted formats: jpeg, jpg, png, gif, webp.
 
-### Persistent folder (`UPLOADS_DIR`)
+### Cloudinary (recommended for Render / production)
 
-By default files go under `server/server/uploads/`. On many hosts that folder is **wiped on deploy/restart**, which causes **404** for old image URLs.
+If **`CLOUDINARY_URL`** is set (from the Cloudinary dashboard → API Keys), new uploads go to **Cloudinary** and the API stores the **`https://res.cloudinary.com/...`** URL in MongoDB. Images survive deploys and restarts.
 
-Set **`UPLOADS_DIR`** in `.env` to an **absolute path** on a **persistent volume** so Multer keeps writing to the same files across deploys:
+You can use **`CLOUDINARY_CLOUD_NAME`**, **`CLOUDINARY_API_KEY`**, and **`CLOUDINARY_API_SECRET`** instead of `CLOUDINARY_URL` if you prefer.
 
-- **Render:** add a **Disk**, mount it (e.g. `/var/render/data`), then set `UPLOADS_DIR=/var/render/data/uploads` and redeploy. Create the directory once if needed.
+### Local disk (development or without Cloudinary)
 
-Multer and `express.static` both use this path.
+If Cloudinary is **not** configured, Multer saves under **`UPLOADS_DIR`** or the default `server/server/uploads/` folder, served at `/uploads/...`. On ephemeral hosts, set **`UPLOADS_DIR`** to a path on a **persistent disk** (see Render docs) or uploads will disappear after deploy.
 
 ## Admin Login
 

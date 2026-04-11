@@ -1,10 +1,11 @@
 import multer from "multer";
 import path from "path";
 import { ensureUploadsDir } from "./uploadsDir.js";
+import { isCloudinaryEnabled } from "./cloudinaryUpload.js";
 
 const uploadDir = ensureUploadsDir();
 
-const storage = multer.diskStorage({
+const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
   },
@@ -14,6 +15,8 @@ const storage = multer.diskStorage({
     cb(null, uniqueSuffix + ext);
   },
 });
+
+const storage = isCloudinaryEnabled() ? multer.memoryStorage() : diskStorage;
 
 const fileFilter = (req, file, cb) => {
   const allowed = /jpeg|jpg|png|gif|webp/i;
