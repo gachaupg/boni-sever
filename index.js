@@ -45,9 +45,11 @@ function toProductJSON(doc) {
     name: o.name,
     price: o.price,
     tag: o.tag || null,
+    description: o.description || null,
     image: o.image || null,
     in_stock: o.in_stock !== false,
     created_at: o.createdAt,
+    updated_at: o.updatedAt,
   };
 }
 
@@ -136,9 +138,11 @@ app.get("/api/products", async (req, res) => {
         name: p.name,
         price: p.price,
         tag: p.tag || null,
+        description: p.description || null,
         image: p.image || null,
         in_stock: p.in_stock !== false,
         created_at: p.createdAt,
+        updated_at: p.updatedAt,
       }))
     );
   } catch (err) {
@@ -148,7 +152,7 @@ app.get("/api/products", async (req, res) => {
 
 app.post("/api/products", authMiddleware, upload.single("image"), async (req, res) => {
   try {
-    const { name, price, tag, in_stock } = req.body || {};
+    const { name, price, tag, description, in_stock } = req.body || {};
     if (!name || !price) {
       return res.status(400).json({ error: "Name and price required" });
     }
@@ -162,6 +166,7 @@ app.post("/api/products", authMiddleware, upload.single("image"), async (req, re
       name,
       price: price || "",
       tag: tag || null,
+      description: description?.trim() ? description.trim() : null,
       image: imagePath,
       in_stock: stocked,
     });
@@ -173,7 +178,7 @@ app.post("/api/products", authMiddleware, upload.single("image"), async (req, re
 
 app.put("/api/products/:id", authMiddleware, upload.single("image"), async (req, res) => {
   try {
-    const { name, price, tag, in_stock } = req.body || {};
+    const { name, price, tag, description, in_stock } = req.body || {};
     const id = req.params.id;
     const existing = await Product.findById(id);
     if (!existing) return res.status(404).json({ error: "Product not found" });
@@ -182,6 +187,10 @@ app.put("/api/products/:id", authMiddleware, upload.single("image"), async (req,
       name: name !== undefined && String(name).trim() !== "" ? name : existing.name,
       price: price !== undefined && String(price).trim() !== "" ? price : existing.price,
       tag: tag !== undefined ? (tag || null) : existing.tag,
+      description:
+        description !== undefined
+          ? String(description).trim() || null
+          : existing.description ?? null,
       image: existing.image,
     };
     if (in_stock !== undefined && in_stock !== "") {
@@ -346,6 +355,33 @@ app.post("/api/product-clicks", async (req, res) => {
       product_name,
     });
     res.status(201).json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+/** Public leaderboard for “frequently requested” products on the marketing site */
+app.get("/api/product-clicks/popular", async (req, res) => {
+  try {
+    const raw = parseInt(String(req.query.limit || "8"), 10);
+    const limit = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), 24) : 8;
+    const rows = await ProductClick.aggregate([
+      {
+        $group: {
+          _id: "$product_name",
+          product_name: { $first: "$product_name" },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { count: -1 } },
+      { $limit: limit },
+    ]);
+    res.json({
+      popular: rows.map((r) => ({
+        product_name: r.product_name,
+        count: r.count,
+      })),
+    });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
