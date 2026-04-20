@@ -59,7 +59,28 @@ export async function uploadProductImageToCloudinary(buffer, mimetype) {
   return result.secure_url;
 }
 
+export async function uploadGalleryImageToCloudinary(buffer, mimetype) {
+  const type = mimetype && String(mimetype).startsWith("image/") ? mimetype : "image/jpeg";
+  const dataUri = `data:${type};base64,${buffer.toString("base64")}`;
+  const result = await cloudinary.uploader.upload(dataUri, {
+    folder: "prime-eagle-gallery",
+    resource_type: "image",
+    allowed_formats: ["jpg", "jpeg", "png", "gif", "webp"],
+  });
+  return result.secure_url;
+}
+
 export async function deleteProductImageFromCloudinary(imageUrl) {
+  const publicId = cloudinaryPublicIdFromUrl(imageUrl);
+  if (!publicId) return;
+  try {
+    await cloudinary.uploader.destroy(publicId, { resource_type: "image", invalidate: true });
+  } catch {
+    // ignore missing / already deleted
+  }
+}
+
+export async function deleteGalleryImageFromCloudinary(imageUrl) {
   const publicId = cloudinaryPublicIdFromUrl(imageUrl);
   if (!publicId) return;
   try {

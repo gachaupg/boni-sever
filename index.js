@@ -13,12 +13,15 @@ import {
   isCloudinaryEnabled,
   uploadProductImageToCloudinary,
   deleteProductImageFromCloudinary,
+  uploadGalleryImageToCloudinary,
+  deleteGalleryImageFromCloudinary,
 } from "./config/cloudinaryUpload.js";
 import User from "./models/User.js";
 import Product from "./models/Product.js";
 import Service from "./models/Service.js";
 import Message from "./models/Message.js";
 import ProductClick from "./models/ProductClick.js";
+import GalleryItem from "./models/GalleryItem.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
@@ -55,6 +58,20 @@ function toProductJSON(doc) {
     description: o.description || null,
     image: o.image || null,
     in_stock: o.in_stock !== false,
+    created_at: o.createdAt,
+    updated_at: o.updatedAt,
+  };
+}
+
+function toGalleryJSON(doc) {
+  if (!doc) return null;
+  const o = doc.toObject ? doc.toObject() : doc;
+  return {
+    id: o._id?.toString(),
+    _id: o._id?.toString(),
+    caption: o.caption || null,
+    category: o.category || "others",
+    image: o.image || null,
     created_at: o.createdAt,
     updated_at: o.updatedAt,
   };
@@ -326,6 +343,72 @@ app.delete("/api/services/:id", authMiddleware, async (req, res) => {
   try {
     const service = await Service.findByIdAndDelete(req.params.id);
     if (!service) return res.status(404).json({ error: "Service not found" });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Gallery
+app.get("/api/gallery", async (req, res) => {
+  try {
+    const category = String(req.query.category || "").trim();
+    const query = {};
+    if (["gates", "motors", "cctv-cameras", "others"].includes(category)) {
+      query.category = category;
+    }
+    const items = await GalleryItem.find(query).sort({ createdAt: -1 }).lean();
+    res.json(items.map((item) => toGalleryJSON(item)));
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/gallery", authMiddleware, upload.single("image"), async (req, res) => {
+  try {
+    const { caption, category } = req.body || {};
+    const normalizedCategory = ["gates", "motors", "cctv-cameras", "others"].includes(String(category))
+      ? String(category)
+      : "others";
+
+    if (!req.file) {
+      return res.status(400).json({ error: "Image is required" });
+    }
+
+    let imagePath = null;
+    if (isCloudinaryEnabled()) {
+      imagePath = await uploadGalleryImageToCloudinary(req.file.buffer, req.file.mimetype);
+    } else {
+      imagePath = "/uploads/" + req.file.filename;
+    }
+
+    const item = await GalleryItem.create({
+      caption: caption?.trim() ? caption.trim() : null,
+      category: normalizedCategory,
+      image: imagePath,
+    });
+
+    res.status(201).json(toGalleryJSON(item));
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Server error" });
+  }
+});
+
+app.delete("/api/gallery/:id", authMiddleware, async (req, res) => {
+  try {
+    const item = await GalleryItem.findByIdAndDelete(req.params.id);
+    if (!item) return res.status(404).json({ error: "Gallery item not found" });
+
+    if (item.image) {
+      const img = String(item.image);
+      if (img.startsWith("/uploads/")) {
+        const filePath = path.join(uploadsDir, path.basename(img));
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      } else if (img.includes("res.cloudinary.com")) {
+        await deleteGalleryImageFromCloudinary(img);
+      }
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
